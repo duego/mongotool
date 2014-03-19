@@ -66,24 +66,28 @@ func runDump(cmd *Command, args []string) {
 		errorf("%s", "TODO: Set stdout storage here")
 		exit()
 	}
-	if u, err := url.Parse(dumpTarget); err != nil {
-		// Probably not an S3 url if parsing fails, try disk storage
-		errorf("%s", "TODO: Set disk storage here")
-		exit()
+	if dumpTarget[:4] == "http" {
+		if u, err := url.Parse(dumpTarget); err != nil {
+			errorf("%v", err)
+			exit()
+		} else {
+			store = storage.S3{fmt.Sprintf("%s://%s", u.Scheme, u.Host)}
+			root = u.Path
+		}
 	} else {
-		store = storage.S3{fmt.Sprintf("%s://%s", u.Scheme, u.Host)}
-		root = u.Path
+		store = storage.Filesystem{dumpTarget}
 	}
 
 	for o := range dump.Remote(s, dumpCollection) {
-		fmt.Println(o.Id, len(o.Bson))
-
+		tags := map[string]string{
+			"Optime":     "TODO",
+			"Collection": o.Collection,
+			"Database":   o.Database,
+		}
 		err := store.Save(
 			strings.Join([]string{root, o.Database, o.Collection, o.Id.Hex()}, "/"),
 			bytes.NewReader(o.Bson),
-			[][]string{
-				[]string{"Optime", "TODO"},
-			},
+			tags,
 		)
 
 		if err != nil {

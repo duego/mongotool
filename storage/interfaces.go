@@ -9,15 +9,20 @@ type Saver interface {
 	Save(path string, r io.Reader, tags map[string]string) error
 }
 
+// Fetcher should stream ReaderTaggers for all objects recursively in the specified path
 type Fetcher interface {
-	Fetch(path string) <-chan ReaderTagger
+	Fetch(path string) (<-chan ReadCloserTagger, error)
+}
+
+type Pather interface {
+	Path() string
 }
 
 type Tagger interface {
 	Tags() map[string]string
 }
 
-type ReaderTagger interface {
-	io.Reader
+type ReadCloserTagger interface {
+	io.ReadCloser
 	Tagger
 }

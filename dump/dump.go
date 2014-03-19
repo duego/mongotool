@@ -38,7 +38,6 @@ func (o *Object) SetBSON(raw bson.Raw) error {
 	}{}
 	raw.Unmarshal(&unmarshalled)
 	o.Id = unmarshalled.Id
-
 	return nil
 }
 
@@ -64,10 +63,11 @@ func Remote(s *mgo.Session, collection string) <-chan *Object {
 
 		for {
 			result := NewObject(db.Name, collection)
-			for iter.Next(result) {
+			if iter.Next(result) {
 				c <- result
+			} else {
+				break
 			}
-			break
 		}
 
 		if iter.Timeout() {
