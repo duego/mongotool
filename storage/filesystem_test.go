@@ -3,6 +3,7 @@ package storage
 import (
 	"bytes"
 	. "github.com/smartystreets/goconvey/convey"
+	"io"
 	"io/ioutil"
 	"os"
 	"path"
@@ -21,16 +22,17 @@ func TestFilesystem(t *testing.T) {
 			return
 		}
 		store := Filesystem{root}
-		tags := map[string]string{
-			"collection": "foo",
-		}
 		Convey("Our storage implements the Saver interface", func() {
 			saver := Saver(store)
 			So(saver, ShouldNotBeNil)
 		})
 		Convey("We should be able to save an object using the relative path...", func() {
-			r := bytes.NewBufferString("foo")
-			err := store.Save(relative, r, tags)
+			r := bytes.NewReader([]byte("foo"))
+			w, err := store.Save(relative)
+			So(err, ShouldBeNil)
+			_, err = io.Copy(w, r)
+			So(err, ShouldBeNil)
+			err = w.Close()
 			So(err, ShouldBeNil)
 			Convey("...Which should then have some bytes saved to it on the specified path", func() {
 				finfo, err := os.Stat(path.Join(root, relative))
@@ -46,7 +48,7 @@ func TestFilesystem(t *testing.T) {
 			c, err := store.Fetch(relative)
 			So(err, ShouldBeNil)
 
-			objects := make([]ReadCloserTagger, 0)
+			objects := make([]io.ReadCloser, 0)
 			for o := range c {
 				objects = append(objects, o)
 			}
@@ -58,9 +60,6 @@ func TestFilesystem(t *testing.T) {
 				So(string(b), ShouldEqual, "foo")
 				err = objects[0].Close()
 				So(err, ShouldBeNil)
-			})
-			Convey("And the previous tags we specified should be available", func() {
-				So(objects[0].Tags(), ShouldEqual, tags)
 			})
 		})
 	})

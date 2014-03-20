@@ -12,23 +12,22 @@ type Filesystem struct {
 	Root string
 }
 
-func (f Filesystem) Save(fpath string, object io.Reader, tags map[string]string) error {
+func (f Filesystem) Save(fpath string) (io.WriteCloser, error) {
 	fullpath := path.Join(f.Root, fpath)
 	if err := os.MkdirAll(path.Dir(fullpath), 0700); err != nil {
-		return err
+		return nil, err
 	}
 	fd, err := os.Create(fullpath)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	_, err = io.Copy(fd, object)
-	return err
+	return fd, err
 }
 
-func (f Filesystem) Fetch(fpath string) (<-chan ReadCloserTagger, error) {
+func (f Filesystem) Fetch(fpath string) (<-chan io.ReadCloser, error) {
 	fullpath := path.Join(f.Root, fpath)
 
-	c := make(chan ReadCloserTagger)
+	c := make(chan io.ReadCloser)
 	go func() {
 		defer close(c)
 
@@ -47,18 +46,10 @@ func (f Filesystem) Fetch(fpath string) (<-chan ReadCloserTagger, error) {
 			}
 
 			log.Println(info.Name())
-			c <- File{o}
+			c <- o
 			return nil
 		})
 	}()
 
 	return c, nil
-}
-
-type File struct {
-	*os.File
-}
-
-func (f File) Tags() map[string]string {
-	return nil
 }

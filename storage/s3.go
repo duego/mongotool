@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"github.com/smartystreets/go-aws-auth"
@@ -9,6 +10,53 @@ import (
 	"net/http"
 	"os"
 )
+
+type requestBuilder func(bucket, path string, body io.Reader, tags map[string]string) (req *http.Request, err error)
+
+type s3File struct {
+	bytes.Buffer
+	path    string
+	bucket  string
+	builder requestBuilder
+	closed  bool
+}
+
+func newS3File(bucket, path string, builder requestBuilder) *s3File {
+	sf := s3File{
+		bucket:  bucket,
+		path:    path,
+		builder: builder,
+	}
+	return &sf
+}
+
+func (sf *s3File) Close() error {
+	if sf.closed {
+		return nil
+	}
+	sf.closed = true
+
+	req, err := sf.builder(sf.bucket, sf.path, bytes.NewReader(sf.Bytes()), nil)
+	if err != nil {
+		return err
+	}
+	client := http.DefaultClient
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if code := resp.StatusCode; code != 200 {
+		msg, _ := ioutil.ReadAll(resp.Body)
+		return errors.New(
+			fmt.Sprintf("Expected 200 OK, got: (%d)\n%s", code, string(msg)),
+		)
+	}
+
+	return nil
+}
 
 // S3 saves objects using Amazon services
 type S3 struct {
@@ -28,38 +76,20 @@ func (s S3) checkAwsKeys() error {
 	return nil
 }
 
-func (s S3) Save(path string, object io.Reader, tags map[string]string) error {
+func (s S3) Save(path string) (io.WriteCloser, error) {
 	if err := s.checkAwsKeys(); err != nil {
-		return err
+		return nil, err
 	}
-	req, err := s.S3Object(path, object, tags)
-	if err != nil {
-		return err
-	}
-	client := http.DefaultClient
-	resp, err := client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	if code := resp.StatusCode; code != 200 {
-		msg, _ := ioutil.ReadAll(resp.Body)
-		return errors.New(
-			fmt.Sprintf("Expected 200 OK, got: (%d)\n%s", code, string(msg)),
-		)
-	}
-
-	return nil
+	return newS3File(s.Bucket, path, S3Object), nil
 }
 
-func (s S3) S3Object(path string, body io.Reader, tags map[string]string) (req *http.Request, err error) {
+func S3Object(bucket, path string, body io.Reader, tags map[string]string) (req *http.Request, err error) {
 	if len(path) > 0 {
-		if string(path[0]) != "/" {
+		if string(path[0]) != "/" && string(bucket[len(bucket)]) != "/" {
 			path = "/" + path
 		}
 	}
-	if req, err = http.NewRequest("PUT", s.Bucket+path, body); err != nil {
+	if req, err = http.NewRequest("PUT", bucket+path, body); err != nil {
 		return
 	}
 	for key, value := range tags {

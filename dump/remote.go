@@ -51,30 +51,39 @@ func Remote(s *mgo.Session, collection string) <-chan *Object {
 			log.Println("No session")
 			return
 		}
-		if collection == "" {
-			// TODO: Dump all collections by default
-			// cols, _ := db.CollectionNames()
-			log.Println("No collection specified")
-			return
-		}
-
+		// Get the database selected by the connection string
 		db := s.DB("")
-		iter := db.C(collection).Find(nil).Iter()
 
-		for {
-			result := NewObject(db.Name, collection)
-			if iter.Next(result) {
-				c <- result
+		var collections []string
+		if collection == "" {
+			if cols, err := db.CollectionNames(); err != nil {
+				log.Println(err)
+				return
 			} else {
-				break
+				collections = cols
 			}
+		} else {
+			collections = append(collections, collection)
 		}
 
-		if iter.Timeout() {
-			log.Println("Cursor timed out")
-		}
-		if err := iter.Close(); err != nil {
-			log.Println(err)
+		for _, collection := range collections {
+			iter := db.C(collection).Find(nil).Iter()
+
+			for {
+				result := NewObject(db.Name, collection)
+				if iter.Next(result) {
+					c <- result
+				} else {
+					break
+				}
+			}
+
+			if iter.Timeout() {
+				log.Println("Cursor timed out")
+			}
+			if err := iter.Close(); err != nil {
+				log.Println(err)
+			}
 		}
 	}()
 
