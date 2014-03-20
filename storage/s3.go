@@ -53,7 +53,6 @@ func (s S3) Save(path string, object io.Reader, tags map[string]string) error {
 	return nil
 }
 
-// TODO: Auth signature doesn't work, see test.
 func (s S3) S3Object(path string, body io.Reader, tags map[string]string) (req *http.Request, err error) {
 	if len(path) > 0 {
 		if string(path[0]) != "/" {
@@ -67,6 +66,6 @@ func (s S3) S3Object(path string, body io.Reader, tags map[string]string) (req *
 		req.Header.Add("x-amz-meta-"+key, value)
 	}
 
-	awsauth.SignS3(req)
+	awsauth.Sign4(req)
 	return
 }
