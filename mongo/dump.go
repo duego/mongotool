@@ -1,4 +1,4 @@
-package dump
+package mongo
 
 import (
 	"bytes"
@@ -9,7 +9,10 @@ import (
 	"strings"
 )
 
-const objectIdKind = 0x07
+const (
+	objectIdKind = 0x07
+	objectKind   = 0x03
+)
 
 // file Implements the storage.Filer interface
 type File struct {
@@ -67,8 +70,12 @@ func (o *Object) SetBSON(raw bson.Raw) error {
 	return nil
 }
 
-// Remote will stream all objects from a collection on the returned channel
-func Remote(s *mgo.Session, collection string) <-chan *File {
+func (o *Object) GetBSON() (interface{}, error) {
+	return bson.Raw{objectKind, o.Bson}, nil
+}
+
+// Dump will stream all objects from a collection on the returned channel
+func Dump(s *mgo.Session, collection string) <-chan *File {
 	c := make(chan *File)
 	go func() {
 		defer close(c)

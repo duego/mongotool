@@ -39,25 +39,31 @@ func TestFilesystem(t *testing.T) {
 				So(path.Join(root, relative), shouldExistInFilesystem)
 			})
 		})
-		Convey("Our storage implements the Fetcher interface", func() {
-			fetcher := Fetcher(store)
-			So(fetcher, ShouldNotBeNil)
+		Convey("Our storage implements the Walker interface", func() {
+			walker := Walker(store)
+			So(walker, ShouldNotBeNil)
+			Convey("A request to get list of objects should succeed", func() {
+				total := 0
+				err := walker.Walk(path.Dir(relative), func(p string, err error) error {
+					So(err, ShouldBeNil)
+					So(p, ShouldEqual, relative)
+					total++
+					return err
+				})
+				So(err, ShouldBeNil)
+				So(total, ShouldEqual, 1)
+			})
 		})
 		Convey("We should be able to fetch the object we previously saved using the relative path...", func() {
-			c, err := store.Fetch(relative)
+			o, err := store.Fetch(relative)
 			So(err, ShouldBeNil)
-
-			objects := make([]io.ReadCloser, 0)
-			for o := range c {
-				objects = append(objects, o)
-			}
-			So(len(objects), ShouldEqual, 1)
+			So(o, ShouldNotBeNil)
 
 			Convey("Which should contain what we saved", func() {
-				b, err := ioutil.ReadAll(objects[0])
+				b, err := ioutil.ReadAll(o)
 				So(err, ShouldBeNil)
 				So(string(b), ShouldEqual, "foo")
-				err = objects[0].Close()
+				err = o.Close()
 				So(err, ShouldBeNil)
 			})
 		})

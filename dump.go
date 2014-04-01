@@ -3,19 +3,18 @@ package main
 import (
 	"archive/tar"
 	"fmt"
-	"github.com/duego/mongotool/dump"
+	"github.com/duego/mongotool/mongo"
 	"github.com/duego/mongotool/storage"
 	"io"
-	"labix.org/v2/mgo"
 	"math/rand"
-	"net/url"
 	"os"
 	"path"
+	"strings"
 	"time"
 )
 
 var cmdDump = &Command{
-	UsageLine: "dump -host [-collection] [-concurrency] [-target]",
+	UsageLine: "dump [-host address] [-collection name] [-concurrency num] [-target path]",
 	Short:     "dump database to S3 bucket, filesystem or stdout",
 	Long: `
 Dump reads one or all collections of the specified database and
@@ -43,6 +42,8 @@ Set -size to pick how many MB of bson we should read until moving on with the ne
 The -compress flag specifies if we should compress data before hitting the target storage.
 
 The -concurrency flag specifies how many objects to dump to the target at the same time
+
+If the -progress flag is set to true, an object count will be displayed
 `,
 }
 
@@ -127,39 +128,7 @@ chunk:
 }
 
 func runDump(cmd *Command, args []string) {
-	fmt.Println("Connecting to", dumpHost)
-	s, err := mgo.Dial(dumpHost + "?connect=direct")
-	if err != nil {
-		errorf("Error connecting to %s: %v", dumpHost, err)
-		exit()
-	}
-
-	var (
-		store storage.Saver
-		root  string
-	)
-	// Figure out what kind of storage we're looking for
-	if dumpTarget == "-" {
-		errorf("%s", "TODO: Set stdout storage here")
-		exit()
-	}
-	if dumpTarget[:4] == "http" {
-		if u, err := url.Parse(dumpTarget); err != nil {
-			errorf("%v", err)
-			exit()
-		} else {
-			store = storage.S3{fmt.Sprintf("%s://%s", u.Scheme, u.Host)}
-			root = u.Path
-		}
-	} else {
-		store = storage.Filesystem{dumpTarget}
-		root = ""
-	}
-
-	// Apply compression
-	if dumpCompress {
-		store = storage.NewGzip(store)
-	}
+	root, store := selectStorage(dumpTarget, dumpCompress)
 
 	// Buffer additional objects exceeding one worker
 	objects := make(chan storage.Filer, dumpConcurrency-1)
@@ -175,11 +144,14 @@ func runDump(cmd *Command, args []string) {
 		}()
 	}
 
-	count := make(chan int64)
+	count := make(chan bool)
 	go func() {
-		for o := range dump.Remote(s, dumpCollection) {
+		for o := range mongo.Dump(mongoSession(dumpHost), dumpCollection) {
 			objects <- o
-			count <- 1
+			// Don't count indexes as "objects"
+			if !strings.HasSuffix(o.Path(), "/indexes.json") {
+				count <- true
+			}
 		}
 		close(count)
 		close(objects)
@@ -190,13 +162,13 @@ func runDump(cmd *Command, args []string) {
 	pending := dumpConcurrency
 	for {
 		select {
-		case added, ok := <-count:
+		case _, ok := <-count:
 			// In case all work is sent, stop counting and wait for pending to finish
 			if !ok {
 				count = nil
 				break
 			}
-			total += added
+			total++
 		case err := <-errc:
 			if err != nil {
 				errorf("\nError saving object: %v", err)

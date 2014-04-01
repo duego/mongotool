@@ -5,11 +5,14 @@ import (
 	"fmt"
 	. "github.com/smartystreets/goconvey/convey"
 	"io"
+	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
 	"net/http/httputil"
 	"net/url"
 	"os"
+	"path"
+	"strings"
 	"testing"
 )
 
@@ -39,8 +42,34 @@ func TestSignS3(t *testing.T) {
 			err = w.Close()
 			So(err, ShouldBeNil)
 		})
-		Convey("A request to GET an object should succeed", func() {
-			SkipSo("Not implemented")
+
+		Convey("Our storage implements the Walker interface", func() {
+			walker := Walker(store)
+			So(walker, ShouldNotBeNil)
+			Convey("A request to get list of objects should succeed", func() {
+				total := 0
+				err := walker.Walk(path.Dir(u.Path), func(p string, err error) error {
+					So(err, ShouldBeNil)
+					So(p, ShouldEqual, strings.TrimLeft(u.Path, "/"))
+					total++
+					return err
+				})
+				So(err, ShouldBeNil)
+				So(total, ShouldEqual, 1)
+			})
+		})
+		Convey("Our storage implements the Fetcher inteface", func() {
+			fetcher := Fetcher(store)
+			So(fetcher, ShouldNotBeNil)
+			Convey("A request to get an object should succeed", func() {
+				o, err := fetcher.Fetch(strings.TrimLeft(u.Path, "/"))
+				So(err, ShouldBeNil)
+				So(o, ShouldNotBeNil)
+				b, err := ioutil.ReadAll(o)
+				So(err, ShouldBeNil)
+				So(string(b), ShouldEqual, "Foo")
+				So(o.Close(), ShouldBeNil)
+			})
 		})
 	})
 }
@@ -56,11 +85,11 @@ func TestS3File(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	builder := func(bucket, path string, body io.Reader, tags map[string]string) (req *http.Request, err error) {
+	builder := func(method, bucket, path string, body io.Reader) (req *http.Request, err error) {
 		return http.NewRequest("PUT", ts.URL, body)
 	}
 
-	f := newS3File("bucket", "path", builder)
+	f := news3FileWriter("bucket", "path", builder)
 	Convey("A new S3File", t, func() {
 		Convey("Implements Writer", func() {
 			w := io.WriteCloser(f)

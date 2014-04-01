@@ -10,13 +10,17 @@ type Filer interface {
 	Length() int64
 }
 
+type SaveFetcher interface {
+	Saver
+	Fetcher
+}
+
 type Saver interface {
 	Save(path string) (io.WriteCloser, error)
 }
 
-// Fetcher should stream ReaderClosers for all objects recursively in the specified path
 type Fetcher interface {
-	Fetch(path string) (<-chan io.ReadCloser, error)
+	Fetch(path string) (io.ReadCloser, error)
 }
 
 type Pather interface {
@@ -26,3 +30,9 @@ type Pather interface {
 type Tagger interface {
 	Tags() map[string]string
 }
+
+type Walker interface {
+	Walk(path string, walkfn WalkFunc) error
+}
+
+type WalkFunc func(fpath string, err error) error

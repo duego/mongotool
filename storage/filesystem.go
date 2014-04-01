@@ -2,10 +2,10 @@ package storage
 
 import (
 	"io"
-	"log"
 	"os"
 	"path"
 	"path/filepath"
+	"strings"
 )
 
 type Filesystem struct {
@@ -24,32 +24,17 @@ func (f Filesystem) Save(fpath string) (io.WriteCloser, error) {
 	return fd, err
 }
 
-func (f Filesystem) Fetch(fpath string) (<-chan io.ReadCloser, error) {
-	fullpath := path.Join(f.Root, fpath)
-
-	c := make(chan io.ReadCloser)
-	go func() {
-		defer close(c)
-
-		filepath.Walk(fullpath, func(fpath string, info os.FileInfo, err error) error {
-			if err != nil {
-				log.Println(err)
-				return err
-			}
-			if info.IsDir() {
-				return nil
-			}
-			o, err := os.Open(fpath)
-			if err != nil {
-				log.Println(err)
-				return nil
-			}
-
-			log.Println(info.Name())
-			c <- o
+func (f Filesystem) Walk(p string, wfunc WalkFunc) error {
+	fullpath := path.Join(f.Root, p)
+	return filepath.Walk(fullpath, func(fpath string, info os.FileInfo, err error) error {
+		if info.IsDir() {
 			return nil
-		})
-	}()
+		}
+		relative := strings.TrimPrefix(fpath, f.Root)
+		return wfunc(strings.TrimLeft(relative, "/"), err)
+	})
+}
 
-	return c, nil
+func (f Filesystem) Fetch(fpath string) (io.ReadCloser, error) {
+	return os.Open(path.Join(f.Root, fpath))
 }

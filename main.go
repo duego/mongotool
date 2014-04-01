@@ -84,6 +84,7 @@ func help(args []string) {
 
 var commands = []*Command{
 	cmdDump,
+	cmdRestore,
 }
 
 func main() {
