@@ -2,6 +2,7 @@ package storage
 
 import (
 	"bytes"
+	"fmt"
 	. "github.com/smartystreets/goconvey/convey"
 	"io"
 	"io/ioutil"
@@ -35,9 +36,7 @@ func TestFilesystem(t *testing.T) {
 			err = w.Close()
 			So(err, ShouldBeNil)
 			Convey("...Which should then have some bytes saved to it on the specified path", func() {
-				finfo, err := os.Stat(path.Join(root, relative))
-				So(err, ShouldBeNil)
-				So(finfo.Size(), ShouldBeGreaterThan, 0)
+				So(path.Join(root, relative), shouldExistInFilesystem)
 			})
 		})
 		Convey("Our storage implements the Fetcher interface", func() {
@@ -63,4 +62,15 @@ func TestFilesystem(t *testing.T) {
 			})
 		})
 	})
+}
+
+func shouldExistInFilesystem(filename interface{}, _ ...interface{}) string {
+	finfo, err := os.Stat(filename.(string))
+	if err != nil {
+		return fmt.Sprintf("Expected %s to exist but it did not.", filename)
+	}
+	if s := finfo.Size(); s == 0 {
+		return fmt.Sprintf("Expected %s to have a filesize greater than 0 but it was %d", filename, s)
+	}
+	return ""
 }
