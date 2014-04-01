@@ -1,12 +1,38 @@
 package dump
 
 import (
+	"bytes"
+	"encoding/json"
 	"labix.org/v2/mgo"
 	"labix.org/v2/mgo/bson"
 	"log"
+	"strings"
 )
 
 const objectIdKind = 0x07
+
+// file Implements the storage.Filer interface
+type File struct {
+	*bytes.Reader
+	name   string
+	length int64
+}
+
+func NewFile(db, collection, name string, data []byte) *File {
+	return &File{
+		bytes.NewReader(data),
+		strings.Join([]string{db, collection, name}, "/"),
+		int64(len(data)),
+	}
+}
+
+func (f *File) Path() string {
+	return f.name
+}
+
+func (f *File) Length() int64 {
+	return f.length
+}
 
 // Object represents one MongoDB object with attached metadata
 type Object struct {
@@ -42,9 +68,8 @@ func (o *Object) SetBSON(raw bson.Raw) error {
 }
 
 // Remote will stream all objects from a collection on the returned channel
-func Remote(s *mgo.Session, collection string) <-chan *Object {
-	// TODO: Pass errors somewhere? Perhaps a method like iter.Close
-	c := make(chan *Object)
+func Remote(s *mgo.Session, collection string) <-chan *File {
+	c := make(chan *File)
 	go func() {
 		defer close(c)
 		if s == nil {
@@ -67,12 +92,36 @@ func Remote(s *mgo.Session, collection string) <-chan *Object {
 		}
 
 		for _, collection := range collections {
-			iter := db.C(collection).Find(nil).Iter()
+			// Skip internal system collections
+			if strings.HasPrefix(collection, "system.") {
+				continue
+			}
+			col := db.C(collection)
 
+			// Dump indexes
+			indexes, err := col.Indexes()
+			if err != nil {
+				log.Println(err)
+			} else {
+				indexJs, err := json.Marshal(indexes)
+				if err != nil {
+					log.Println(err)
+				} else {
+					c <- NewFile(db.Name, collection, "indexes.json", indexJs)
+				}
+			}
+
+			// Dump all objects
+			iter := col.Find(nil).Iter()
 			for {
 				result := NewObject(db.Name, collection)
 				if iter.Next(result) {
-					c <- result
+					c <- NewFile(
+						result.Database,
+						result.Collection,
+						result.Id.Hex(),
+						result.Bson,
+					)
 				} else {
 					break
 				}

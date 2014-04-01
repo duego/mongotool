@@ -1,14 +1,17 @@
 package main
 
 import (
+	"archive/tar"
 	"fmt"
 	"github.com/duego/mongotool/dump"
 	"github.com/duego/mongotool/storage"
+	"io"
 	"labix.org/v2/mgo"
+	"math/rand"
 	"net/url"
 	"os"
-	"strconv"
-	"strings"
+	"path"
+	"time"
 )
 
 var cmdDump = &Command{
@@ -35,6 +38,10 @@ Filesystem is used when a url is not recognized.
 
 Finally stdout is used if "-" is specified.
 
+Set -size to pick how many MB of bson we should read until moving on with the next chunk of data.
+
+The -compress flag specifies if we should compress data before hitting the target storage.
+
 The -concurrency flag specifies how many objects to dump to the target at the same time
 `,
 }
@@ -45,6 +52,8 @@ var (
 	dumpTarget      string // dump target flag
 	dumpProgress    bool   // dump progress flag
 	dumpConcurrency int    // dump concurrency flag
+	dumpSize        int    // dump size flag
+	dumpCompress    bool   // dump compression flag
 )
 
 func init() {
@@ -52,22 +61,68 @@ func init() {
 	cmdDump.Flag.StringVar(&dumpHost, "host", "localhost:27017/test", "")
 	cmdDump.Flag.StringVar(&dumpCollection, "collection", "", "")
 	cmdDump.Flag.StringVar(&dumpTarget, "target", "https://mongotool.s3.amazonaws.com/dump", "")
+	cmdDump.Flag.IntVar(&dumpSize, "size", 1000, "Megabytes per stored chunk")
 	cmdDump.Flag.BoolVar(&dumpProgress, "progress", true, "")
+	cmdDump.Flag.BoolVar(&dumpCompress, "compression", true, "")
 	cmdDump.Flag.IntVar(&dumpConcurrency, "concurrency", 1, "")
 }
 
-func worker(objects chan *dump.Object, errors chan error, store storage.Saver, root string) {
-	for o := range objects {
-		w, err := store.Save(
-			strings.Join([]string{root, o.Database, o.Collection, o.Id.Hex()}, "/"),
-		)
-		if err == nil {
-			_, err = w.Write(o.Bson)
-			if err == nil {
-				err = w.Close()
+func randString(length int) string {
+	alpha := "abcdefghijklmnopqrstuvxyzABCDEFGHIJKLMNOPQRSTUVXYZ"
+	s := ""
+	for n := 0; n < length; n++ {
+		s += string(alpha[rand.Intn(length)])
+	}
+	return s
+}
+
+// Worker is responsible of writing the tar archive to storage.
+// The amount of object data read into each file is contrained to specified size.
+func worker(objects chan storage.Filer, errors chan error, store storage.Saver, root string, size int) {
+chunk:
+	for {
+		// New chunk of data for specified size
+		remaining := storage.ByteSize(size) * storage.MB
+		w, err := store.Save(path.Join(root, "dump."+randString(5)))
+		if err != nil {
+			errorf("Could not open writer: %v", err)
+			exit()
+		}
+		// Read objects into chunk
+		for o := range objects {
+			// New file entry in tar archive
+			tw := tar.NewWriter(w)
+			if err := tw.WriteHeader(&tar.Header{
+				Name:     o.Path(),
+				Mode:     0644,
+				Size:     o.Length(),
+				ModTime:  time.Now(),
+				Typeflag: tar.TypeReg,
+				Uid:      os.Getuid(),
+				Gid:      os.Getegid(),
+			}); err != nil {
+				errors <- err
+				continue
+			}
+			if n, err := io.Copy(tw, o); err != nil {
+				errors <- err
+				continue
+			} else {
+				remaining -= storage.ByteSize(n)
+			}
+			// Since Close would write the end sequence of tar archive, we only flush it.
+			if err := tw.Flush(); err != nil {
+				errors <- err
+				continue
+			}
+			// If we have read all of the allowed size, move on to the next chunk.
+			if remaining <= 0 {
+				errors <- w.Close()
+				continue chunk
 			}
 		}
-		errors <- err
+		errors <- w.Close()
+		return
 	}
 }
 
@@ -98,23 +153,27 @@ func runDump(cmd *Command, args []string) {
 		}
 	} else {
 		store = storage.Filesystem{dumpTarget}
+		root = ""
+	}
+
+	// Apply compression
+	if dumpCompress {
+		store = storage.NewGzip(store)
 	}
 
 	// Buffer additional objects exceeding one worker
-	objects := make(chan *dump.Object, dumpConcurrency-1)
+	objects := make(chan storage.Filer, dumpConcurrency-1)
 
 	// Errors from workers and final sync for any pending work
 	errc := make(chan error, 1)
 
+	done := make(chan bool)
 	for n := 0; n < dumpConcurrency; n++ {
-		go worker(objects, errc, store, root)
+		go func() {
+			worker(objects, errc, store, root, dumpSize)
+			done <- true
+		}()
 	}
-
-	fmt.Fprintln(os.Stderr, "Dumping")
-	var (
-		total   int64
-		pending int64
-	)
 
 	count := make(chan int64)
 	go func() {
@@ -126,7 +185,9 @@ func runDump(cmd *Command, args []string) {
 		close(objects)
 	}()
 
-	formatString := fmt.Sprintf("\rObjects: %%d (pending saves: %%.%dd)", len(strconv.Itoa(dumpConcurrency)))
+	fmt.Fprintln(os.Stderr, "Dumping")
+	var total int64
+	pending := dumpConcurrency
 	for {
 		select {
 		case added, ok := <-count:
@@ -136,16 +197,16 @@ func runDump(cmd *Command, args []string) {
 				break
 			}
 			total += added
-			pending += added
 		case err := <-errc:
 			if err != nil {
-				errorf("\nError sending object to S3: %v", err)
+				errorf("\nError saving object: %v", err)
 				break
 			}
+		case <-done:
 			pending--
 		}
 		if dumpProgress {
-			fmt.Fprintf(os.Stderr, formatString, total, pending)
+			fmt.Fprintf(os.Stderr, "\rObjects: %d", total)
 		}
 
 		// All objects have been sent and nothing is still pending, our work here is done!

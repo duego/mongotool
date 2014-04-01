@@ -4,6 +4,12 @@ import (
 	"io"
 )
 
+type Filer interface {
+	io.Reader
+	Pather
+	Length() int64
+}
+
 type Saver interface {
 	Save(path string) (io.WriteCloser, error)
 }
