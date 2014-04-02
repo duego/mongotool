@@ -5,11 +5,13 @@ import (
 	"io"
 )
 
+// gzipReadCloser pairs an original ReadCloser with a gzip Reader.
 type gzipReadCloser struct {
 	*gzip.Reader
 	original io.ReadCloser
 }
 
+// Close will make sure the original ReadCloser gets closed when gzip reader is, passing any errors.
 func (g *gzipReadCloser) Close() error {
 	if err := g.Reader.Close(); err != nil {
 		g.original.Close()
@@ -18,11 +20,13 @@ func (g *gzipReadCloser) Close() error {
 	return g.original.Close()
 }
 
+// gzipWriteCloser pairs an original WriteCloser with a gzip Writer.
 type gzipWriteCloser struct {
 	*gzip.Writer
 	original io.WriteCloser
 }
 
+// Close will make sure the original WriteCloser gets closed when gzip writer is, passing any errors.
 func (g *gzipWriteCloser) Close() error {
 	if err := g.Writer.Close(); err != nil {
 		g.original.Close()
@@ -31,6 +35,7 @@ func (g *gzipWriteCloser) Close() error {
 	return g.original.Close()
 }
 
+// GzipSaveFetcher wraps another SaveFetcher to compress/decompress data saved/fetched on it.
 type GzipSaveFetcher struct {
 	s SaveFetcher
 }

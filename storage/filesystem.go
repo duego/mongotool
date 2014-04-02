@@ -8,6 +8,7 @@ import (
 	"strings"
 )
 
+// Filesystem implements the SaveFetcher for the traditional disk storage.
 type Filesystem struct {
 	Root string
 }

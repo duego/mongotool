@@ -48,13 +48,14 @@ If the -progress flag is set to true, an object count will be displayed
 }
 
 var (
-	dumpHost        string // dump host flag
-	dumpCollection  string // dump collection flag
-	dumpTarget      string // dump target flag
-	dumpProgress    bool   // dump progress flag
-	dumpConcurrency int    // dump concurrency flag
-	dumpSize        int    // dump size flag
-	dumpCompress    bool   // dump compression flag
+	// dump flags
+	dumpHost        string
+	dumpCollection  string
+	dumpTarget      string
+	dumpProgress    bool
+	dumpConcurrency int
+	dumpSize        int
+	dumpCompress    bool
 )
 
 func init() {
@@ -157,7 +158,6 @@ func runDump(cmd *Command, args []string) {
 		close(objects)
 	}()
 
-	fmt.Fprintln(os.Stderr, "Dumping")
 	var total int64
 	pending := dumpConcurrency
 	for {

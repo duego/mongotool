@@ -14,7 +14,7 @@ const (
 	objectKind   = 0x03
 )
 
-// file Implements the storage.Filer interface
+// File implements the storage.Filer interface, used for passing objects suitable to save in storage.
 type File struct {
 	*bytes.Reader
 	name   string
@@ -37,15 +37,15 @@ func (f *File) Length() int64 {
 	return f.length
 }
 
-// Object represents one MongoDB object with attached metadata
+// Object represents one MongoDB object with attached metadata.
 type Object struct {
-	// The raw bson object
+	// The raw bson object.
 	Bson []byte
-	// The Object Id extracted from the raw bson
+	// The Object Id extracted from the raw bson.
 	Id bson.ObjectId
-	// Collection is from what collection the object was fetched from
+	// Collection is from what collection the object was fetched from.
 	Collection string
-	// Database where the collection was read from
+	// Database where the collection was read from.
 	Database string
 }
 
@@ -70,6 +70,8 @@ func (o *Object) SetBSON(raw bson.Raw) error {
 	return nil
 }
 
+// GetBSON implements the bson.Getter, making it possible to pass the raw bson that should be put
+// into MongoDB instead of going through the marshalling process.
 func (o *Object) GetBSON() (interface{}, error) {
 	return bson.Raw{objectKind, o.Bson}, nil
 }

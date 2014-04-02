@@ -43,11 +43,12 @@ Set -indexes to false to skip ensure indexes.
 }
 
 var (
-	restoreHost       string // restore host flag
-	restoreSource     string // restore source flag
-	restoreProgress   bool   // restore progress flag
-	restoreCompressed bool   // restore compression flag
-	restoreIndexes    bool   // restore indexes flag
+	// restore flags
+	restoreHost       string
+	restoreSource     string
+	restoreProgress   bool
+	restoreCompressed bool
+	restoreIndexes    bool
 )
 
 func init() {

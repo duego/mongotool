@@ -18,7 +18,7 @@ import (
 
 var resource = os.Getenv("TestS3Object")
 
-func TestSignS3(t *testing.T) {
+func TestS3(t *testing.T) {
 	Convey("Given a real S3 bucket resource", t, func() {
 		if resource == "" {
 			SkipSo("TestS3Object flag not set")
@@ -71,6 +71,9 @@ func TestSignS3(t *testing.T) {
 				So(o.Close(), ShouldBeNil)
 			})
 		})
+	})
+	Convey("Listing more than 1000 objects should be possible", t, func() {
+		SkipSo("Not implemented")
 	})
 }
 

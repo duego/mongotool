@@ -14,8 +14,10 @@ import (
 	"time"
 )
 
+// requestBuilder is something that can sign and return a http.Request for S3.
 type requestBuilder func(method, bucket, path string, body io.Reader) (req *http.Request, err error)
 
+// s3FileWriter takes care of buffering all written data for one S3 object until ready to be sent.
 type s3FileWriter struct {
 	bytes.Buffer
 	path    string
@@ -33,6 +35,7 @@ func news3FileWriter(bucket, path string, builder requestBuilder) *s3FileWriter 
 	return &sf
 }
 
+// Close will send the buffered data to S3 using the requestBuilder.
 func (sf *s3FileWriter) Close() error {
 	if sf.closed {
 		return nil
@@ -61,7 +64,7 @@ func (sf *s3FileWriter) Close() error {
 	return nil
 }
 
-// S3 saves objects using Amazon services
+// S3 implements the SaveFetcher for Amazon S3.
 type S3 struct {
 	// The full path to the bucket host.
 	// Example: https://mongotool.s3.amazonaws.com
