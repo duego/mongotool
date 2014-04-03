@@ -80,12 +80,12 @@ func randString(length int) string {
 
 // Worker is responsible of writing the tar archive to storage.
 // The amount of object data read into each file is contrained to specified size.
-func worker(objects chan storage.Filer, errors chan error, store storage.Saver, root string, size int) {
+func worker(objects chan storage.Filer, errors chan error, store storage.Saver, root, suffix string, size int) {
 chunk:
 	for {
 		// New chunk of data for specified size
 		remaining := storage.ByteSize(size) * storage.MB
-		w, err := store.Save(path.Join(root, "dump."+randString(5)))
+		w, err := store.Save(path.Join(root, randString(8)+suffix))
 		if err != nil {
 			errorf("Could not open writer: %v", err)
 			exit()
@@ -138,9 +138,13 @@ func runDump(cmd *Command, args []string) {
 	errc := make(chan error, 1)
 
 	done := make(chan bool)
+	suffix := ".tar"
+	if dumpCompress {
+		suffix += ".gz"
+	}
 	for n := 0; n < dumpConcurrency; n++ {
 		go func() {
-			worker(objects, errc, store, root, dumpSize)
+			worker(objects, errc, store, root, suffix, dumpSize)
 			done <- true
 		}()
 	}

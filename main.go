@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"runtime"
 	"strings"
 	"text/template"
 	"unicode"
@@ -88,6 +89,7 @@ var commands = []*Command{
 }
 
 func main() {
+	runtime.GOMAXPROCS(runtime.NumCPU())
 	flag.Usage = usage
 	flag.Parse()
 	log.SetFlags(0)
