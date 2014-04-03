@@ -28,7 +28,7 @@ func TestS3(t *testing.T) {
 		if err != nil {
 			SkipSo("S3PutObject URL invalid")
 		}
-		store := S3{fmt.Sprintf("%s://%s", u.Scheme, u.Host)}
+		store := NewS3(fmt.Sprintf("%s://%s", u.Scheme, u.Host))
 		Convey("Our storage implements the Saver interface", func() {
 			saver := Saver(store)
 			So(saver, ShouldNotBeNil)

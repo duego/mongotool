@@ -31,7 +31,7 @@ func selectStorage(target string, compression bool) (root string, store storage.
 			errorf("%v", err)
 			exit()
 		} else {
-			store = storage.S3{fmt.Sprintf("%s://%s", u.Scheme, u.Host)}
+			store = storage.NewS3(fmt.Sprintf("%s://%s", u.Scheme, u.Host))
 			root = u.Path
 		}
 	} else {

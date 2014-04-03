@@ -11,8 +11,11 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"time"
 )
+
+var signMu sync.Mutex
 
 // requestBuilder is something that can sign and return a http.Request for S3.
 type requestBuilder func(method, bucket, path string, body io.Reader) (req *http.Request, err error)
@@ -69,6 +72,17 @@ type S3 struct {
 	// The full path to the bucket host.
 	// Example: https://mongotool.s3.amazonaws.com
 	Bucket string
+	client *http.Client
+}
+
+func NewS3(bucket string) *S3 {
+	return &S3{
+		bucket,
+		&http.Client{
+			// For some reason S3 will mess up subsequent GET's if keep alive.
+			Transport: &http.Transport{DisableKeepAlives: true},
+		},
+	}
 }
 
 // checkAwsKeys will look for they environment variables implicitly used by go-aws-auth
@@ -105,8 +119,11 @@ func (s S3) Walk(p string, walkfn WalkFunc) error {
 	params.Set("prefix", p)
 	req.URL.RawQuery = params.Encode()
 
+	signMu.Lock()
 	awsauth.Sign4(req)
-	resp, err := http.DefaultClient.Do(req)
+	signMu.Unlock()
+
+	resp, err := s.client.Do(req)
 	if err != nil {
 		return err
 	}
@@ -147,11 +164,11 @@ func (s S3) Fetch(path string) (io.ReadCloser, error) {
 	if err != nil {
 		return nil, err
 	}
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := s.client.Do(req)
 	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
 		return nil, err
 	}
-
 	if code := resp.StatusCode; code != http.StatusOK {
 		// Don't output body here as it might be a huge file and we can return the body directly
 		return nil, errors.New(fmt.Sprintf("Unexpected status code: %d\n%s", code))
@@ -174,6 +191,8 @@ func S3ObjectReq(method, bucket, path string, body io.Reader) (req *http.Request
 		return
 	}
 
+	signMu.Lock()
 	awsauth.Sign4(req)
+	signMu.Unlock()
 	return
 }
